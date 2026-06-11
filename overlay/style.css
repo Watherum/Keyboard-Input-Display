@@ -1,0 +1,166 @@
+/* Keyboard Input Display — "armory hardware" overlay
+   Transparent page composited by OBS over your game footage. */
+
+@font-face {
+  font-family: "HK Modular";
+  src: url("/fonts/HKModular-Bold.otf") format("opentype");
+  font-weight: 100 900;   /* single bold face covers all weights, no faux-bold */
+}
+
+:root {
+  /* overwritten from config.json (and per-key overrides) */
+  --accent: #ff2a3c;          /* glow color */
+  --cap: #1e1e22;             /* key base color */
+  --legend: #9a9aa4;          /* legend text color */
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  background: transparent;
+  overflow: hidden;
+  font-family: "HK Modular", "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+#stage {
+  position: relative;
+  margin: 24px;
+  transition: filter .6s ease, opacity .6s ease;
+}
+#stage.offline { filter: grayscale(.7); opacity: .35; }
+
+/* ------------------------------------------------------------- keycaps */
+
+.key {
+  /* shades derived from the key's --cap, so per-key colors restyle everything */
+  --cap-top: color-mix(in srgb, var(--cap) 96%, #fff);
+  --cap-bottom: color-mix(in srgb, var(--cap) 62%, #000);
+  --cap-edge: color-mix(in srgb, var(--cap) 90%, #fff);
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: linear-gradient(180deg, var(--cap-top) 0%, var(--cap-bottom) 100%);
+  border: 1px solid var(--cap-edge);
+  border-bottom-color: color-mix(in srgb, var(--accent) 28%, var(--cap-edge));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .07),
+    inset 0 -2px 6px rgba(0, 0, 0, .45),
+    0 4px 10px rgba(0, 0, 0, .55),
+    0 1px 2px rgba(0, 0, 0, .6);
+  color: var(--legend);
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  /* slow release = ember cooldown */
+  transition:
+    transform .06s ease-out,
+    background .45s ease-out,
+    box-shadow .55s ease-out,
+    border-color .55s ease-out,
+    color .45s ease-out,
+    text-shadow .45s ease-out;
+}
+
+/* faint underglow strip on every cap */
+.key::after {
+  content: "";
+  position: absolute;
+  left: 12%; right: 12%; bottom: -3px;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--accent);
+  opacity: .12;
+  filter: blur(3px);
+  transition: opacity .55s ease-out, filter .55s ease-out;
+}
+
+.key.down {
+  transform: translateY(3px) scale(.985);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 38%, color-mix(in srgb, var(--cap) 85%, #000)) 0%,
+    color-mix(in srgb, var(--accent) 14%, color-mix(in srgb, var(--cap) 48%, #000)) 100%);
+  border-color: color-mix(in srgb, var(--accent) 80%, #fff 5%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .18),
+    inset 0 0 14px color-mix(in srgb, var(--accent) 45%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent),
+    0 0 18px color-mix(in srgb, var(--accent) 55%, transparent),
+    0 0 48px color-mix(in srgb, var(--accent) 30%, transparent),
+    0 2px 6px rgba(0, 0, 0, .6);
+  color: #fff;
+  text-shadow:
+    0 0 8px color-mix(in srgb, var(--accent) 80%, #fff),
+    0 0 22px var(--accent);
+  /* press hits instantly */
+  transition:
+    transform .04s ease-out,
+    background .05s ease-out,
+    box-shadow .05s ease-out,
+    border-color .05s ease-out,
+    color .05s ease-out,
+    text-shadow .05s ease-out;
+}
+
+.key.down::after {
+  opacity: .85;
+  filter: blur(6px);
+  transition: opacity .05s ease-out, filter .05s ease-out;
+}
+
+/* legend sizing set inline by app.js via --fs */
+.key span { font-size: var(--fs, 22px); line-height: 1; }
+
+/* ------------------------------------------------- mouse motion widget */
+
+.pad {
+  position: absolute;
+  border-radius: 12px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--cap) 50%, #000) 0%,
+    color-mix(in srgb, var(--cap) 36%, #000) 100%);
+  border: 1px solid color-mix(in srgb, var(--cap) 88%, #fff);
+  box-shadow:
+    inset 0 2px 10px rgba(0, 0, 0, .65),
+    inset 0 -1px 0 rgba(255, 255, 255, .04),
+    0 4px 10px rgba(0, 0, 0, .45);
+  overflow: hidden;
+}
+
+/* arrows style reuses keycaps, no recessed panel behind them */
+.pad.style-arrows {
+  background: none;
+  border: none;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.pad canvas { position: absolute; inset: 0; }
+
+/* crosshair guides for the analog pad */
+.pad.style-pad::before,
+.pad.style-pad::after {
+  content: "";
+  position: absolute;
+  background: rgba(255, 255, 255, .07);
+}
+.pad.style-pad::before { left: 50%; top: 10%; bottom: 10%; width: 1px; }
+.pad.style-pad::after  { top: 50%; left: 10%; right: 10%; height: 1px; }
+
+.pad-dot {
+  position: absolute;
+  left: 0; top: 0;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow:
+    0 0 10px var(--accent),
+    0 0 26px color-mix(in srgb, var(--accent) 55%, transparent);
+  will-change: transform;
+}
+
