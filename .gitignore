@@ -1,0 +1,5 @@
+# Font files — license does not permit redistribution.
+# Drop HKModular-Bold.otf (and optionally HKModular-BoldRounded.otf)
+# into fonts/ locally; the overlay falls back to Segoe UI if they're absent.
+fonts/
+__pycache__/

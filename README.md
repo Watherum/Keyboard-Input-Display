@@ -176,12 +176,18 @@ the overlay can't tell which device pressed it.
 
 ## Font
 
-Legends render in **HK Modular**, self-hosted from the `fonts/` folder
-(no internet needed; Segoe UI fills in any glyph the font lacks, like
-▲ ▬ ▼). To swap the face, drop a font file in `fonts/` and update the
-`@font-face` block at the top of `overlay/style.css`. The rounded
-variant `HKModular-BoldRounded.otf` is already there if you want a
-softer look.
+Legends render in **HK Modular** when the font is present locally.
+The font files are **not included** in this repo — the license does not
+permit redistribution. Obtain them separately and place them in `fonts/`:
+
+- `HKModular-Bold.otf` — main face (required for the HK Modular look)
+- `HKModular-BoldRounded.otf` — optional rounded variant
+
+If the files are absent, the overlay falls back to **Segoe UI** (then
+the system sans-serif), so it works out of the box without them.
+
+To swap in a different font entirely, drop a font file in `fonts/` and
+update the `@font-face` block at the top of `overlay/style.css`.
 
 ## Files
 
