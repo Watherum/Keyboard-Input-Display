@@ -91,15 +91,18 @@ def vk_to_name(vk, flags):
 # ------------------------------------------------------------- broadcasting
 
 clients_lock = threading.Lock()
-clients = []          # list[queue.Queue]
+clients = []          # list[(queue.Queue, wants_motion)]
 held_lock = threading.Lock()
 held = set()          # currently pressed key names
 
 
-def broadcast(msg):
+def broadcast(msg, motion=False):
+    # motion messages only go to overlays that have a motion widget
     data = json.dumps(msg)
     with clients_lock:
-        for q in clients:
+        for q, wants_motion in clients:
+            if motion and not wants_motion:
+                continue
             try:
                 q.put_nowait(data)
             except queue.Full:
@@ -116,13 +119,22 @@ def key_down(name):
 
 def key_up(name):
     with held_lock:
+        if name not in held:      # never shown as down, nothing to clear
+            return
         held.discard(name)
     broadcast({"t": "up", "k": name})
 
 
-# raw mouse motion, accumulated between broadcast ticks
+# raw mouse motion and wheel ticks, accumulated between broadcast ticks so
+# high-rate mice and free-spinning wheels can't flood the stream
 move_lock = threading.Lock()
 move_acc = [0, 0]
+wheel_acc = {"WheelUp": False, "WheelDown": False}
+
+
+def wheel_tick(name):
+    with move_lock:
+        wheel_acc[name] = True
 
 
 def motion_thread():
@@ -131,8 +143,13 @@ def motion_thread():
         with move_lock:
             dx, dy = move_acc
             move_acc[0] = move_acc[1] = 0
+            wheels = [k for k, hit in wheel_acc.items() if hit]
+            for k in wheels:
+                wheel_acc[k] = False
+        for k in wheels:
+            broadcast({"t": "flash", "k": k})
         if dx or dy:
-            broadcast({"t": "move", "dx": dx, "dy": dy})
+            broadcast({"t": "move", "dx": dx, "dy": dy}, motion=True)
 
 
 # ------------------------------------------------------------- win32 hooks
@@ -194,7 +211,7 @@ def _mouse_proc(n_code, w_param, l_param):
             key_up("M4" if (ms.mouseData >> 16) == 1 else "M5")
         elif w_param == WM_MOUSEWHEEL:
             delta = ctypes.c_short(ms.mouseData >> 16).value
-            broadcast({"t": "flash", "k": "WheelUp" if delta > 0 else "WheelDown"})
+            wheel_tick("WheelUp" if delta > 0 else "WheelDown")
     return user32.CallNextHookEx(None, n_code, w_param, l_param)
 
 
@@ -368,7 +385,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path, _, query = self.path.partition("?")
         if path == "/events":
-            self.serve_events()
+            self.serve_events(query)
         elif path == "/config.json":
             self.serve_config(query)
         elif path == "/profiles":
@@ -413,7 +430,11 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def serve_events(self):
+    def serve_events(self, query):
+        # ?motion=0 opts out of mouse motion (overlay has no motion widget)
+        params = urllib.parse.parse_qs(query)
+        wants_motion = params.get("motion", ["1"])[0] != "0"
+
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
@@ -421,27 +442,36 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
         q = queue.Queue(maxsize=512)
+        entry = (q, wants_motion)
         with clients_lock:
-            clients.append(q)
+            clients.append(entry)
         try:
             with held_lock:
                 snapshot = sorted(held)
-            self._sse(json.dumps({"t": "state", "held": snapshot}))
+            self._sse([json.dumps({"t": "state", "held": snapshot})])
             while True:
                 try:
-                    self._sse(q.get(timeout=15))
+                    batch = [q.get(timeout=15)]
                 except queue.Empty:
                     self.wfile.write(b": ping\n\n")
                     self.wfile.flush()
+                    continue
+                # drain anything else already queued into the same write
+                while True:
+                    try:
+                        batch.append(q.get_nowait())
+                    except queue.Empty:
+                        break
+                self._sse(batch)
         except (ConnectionError, OSError):
             pass
         finally:
             with clients_lock:
-                if q in clients:
-                    clients.remove(q)
+                if entry in clients:
+                    clients.remove(entry)
 
-    def _sse(self, data):
-        self.wfile.write(f"data: {data}\n\n".encode())
+    def _sse(self, batch):
+        self.wfile.write("".join(f"data: {d}\n\n" for d in batch).encode())
         self.wfile.flush()
 
 

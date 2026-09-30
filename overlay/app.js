@@ -264,8 +264,14 @@ function flash(id) {
   });
 }
 
+let es = null;
+let esMotion = false;
+
 function connect() {
-  const es = new EventSource("/events");
+  // only subscribe to mouse motion when this layout has a motion widget
+  es?.close();
+  esMotion = !!motionCtl;
+  es = new EventSource(esMotion ? "/events" : "/events?motion=0");
 
   es.onopen = () => stage.classList.remove("offline");
   es.onerror = () => stage.classList.add("offline");  // EventSource auto-reconnects
@@ -289,7 +295,10 @@ function connect() {
         msg.held.forEach((k) => setDown(k, true));
         break;
       case "reload":
-        buildLayout();
+        // resubscribe if the new layout gained or lost the motion widget
+        buildLayout().then(() => {
+          if (!!motionCtl !== esMotion) connect();
+        });
         break;
     }
   };
